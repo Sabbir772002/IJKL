@@ -20,7 +20,10 @@ builder.Services.AddDbContextFactory<AdmissionDbContext>((services, options) =>
 builder.Services.AddHostedService<MigrationHostedService>();
 builder.Services.AddScoped<ClassService>();
 builder.Services.AddScoped<HoldService>();
+builder.Services.AddScoped<AdminService>();
 builder.Services.AddHostedService<ExpirySweeper>();
+builder.Services.AddSingleton<ClassStream>();
+builder.Services.AddHostedService(services => services.GetRequiredService<ClassStream>());
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
 
@@ -31,8 +34,11 @@ app.MapGet("/", () => "Hello World!");
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.UseExceptionHandler(handler => handler.Run(context =>
     ClassEndpoints.Error(500, "INTERNAL", "An unexpected error occurred.").ExecuteAsync(context)));
+app.MapGet("/classes/stream", (HttpContext context, ClassStream stream, ClassService classes) =>
+    stream.WriteAsync(context, classes));
 app.MapClassEndpoints();
 app.MapHoldEndpoints();
+app.MapAdminEndpoints();
 
 app.Run();
 

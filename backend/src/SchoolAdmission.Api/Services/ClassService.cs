@@ -46,7 +46,7 @@ public sealed class ClassService(AdmissionDbContext db, ILogger<ClassService> lo
         return (item, null);
     }
 
-    public async Task<IResult> EditAsync(string id, string? name, int? totalSeats, CancellationToken token)
+    public async Task<IResult> EditAsync(string id, string? name, int? totalSeats, int? blockedSeats, CancellationToken token)
     {
         ClassSeatRow updated;
         await using (var transaction = await db.Database.BeginTransactionAsync(token))
@@ -58,7 +58,7 @@ public sealed class ClassService(AdmissionDbContext db, ILogger<ClassService> lo
 
             var capacity = totalSeats ?? current.TotalSeats;
             var occupied = current.HeldSeats + current.ConfirmedSeats;
-            if (capacity < occupied)
+            if (capacity < occupied || blockedSeats < 0 || blockedSeats > capacity - occupied)
                 return ClassEndpoints.Error(409, "SEATS_BELOW_OCCUPIED", "Seat count cannot be below occupied seats.");
 
             var newName = name ?? current.Name;
@@ -71,7 +71,7 @@ public sealed class ClassService(AdmissionDbContext db, ILogger<ClassService> lo
                     return ClassEndpoints.Duplicate(existing);
             }
 
-            var blocked = Math.Min(current.BlockedSeats, capacity - occupied);
+            var blocked = blockedSeats ?? Math.Min(current.BlockedSeats, capacity - occupied);
             await db.Database.ExecuteSqlAsync($"""
                 UPDATE classes SET name = {newName}, total_seats = {capacity}, blocked_seats = {blocked}
                 WHERE id = {id}
