@@ -28,6 +28,7 @@ export const en: typeof bn = {
   networkError: 'Could not connect to the server. Try again.',
   studentId: 'Birth registration number',
   saveStudent: 'Save',
+  clearStudent: "Clear number",
   changeStudent: 'Change number',
   invalidStudent: 'Enter a 17-digit birth registration number.',
   studentPrompt: 'Enter your birth registration number to apply.',

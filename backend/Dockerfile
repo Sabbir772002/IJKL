@@ -1,8 +1,14 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /app
 COPY . .
-RUN dotnet restore SchoolAdmission.slnx
+RUN dotnet restore src/SchoolAdmission.Api
 RUN dotnet publish src/SchoolAdmission.Api -c Release --no-restore -o /publish
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS test
+WORKDIR /app
+COPY . .
+RUN dotnet build SchoolAdmission.slnx -c Release
+ENTRYPOINT ["dotnet", "test", "SchoolAdmission.slnx", "-c", "Release", "--no-build"]
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app

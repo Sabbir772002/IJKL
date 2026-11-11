@@ -30,6 +30,11 @@ export default function StudentBar({ student, busy, onSave }: Props) {
         }} required />
     </label>
     <button disabled={busy}>{messages.saveStudent}</button>
+    {student && <button type="button" disabled={busy} onClick={() => {
+      setDraft('')
+      setInvalid(false)
+      onSave('')
+    }}>{messages.clearStudent}</button>}
     {invalid && <p role="alert">{messages.invalidStudent}</p>}
   </form>
 }

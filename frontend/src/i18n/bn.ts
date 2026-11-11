@@ -26,6 +26,7 @@ export const bn = {
   networkError: "সার্ভারের সঙ্গে সংযোগ করা যায়নি। আবার চেষ্টা করুন।",
   studentId: 'জন্ম নিবন্ধন নম্বর',
   saveStudent: 'সংরক্ষণ করুন',
+  clearStudent: "নম্বর মুছুন",
   changeStudent: 'নম্বর বদলান',
   invalidStudent: '১৭ সংখ্যার জন্ম নিবন্ধন নম্বর দিন।',
   studentPrompt: 'আবেদন করতে জন্ম নিবন্ধন নম্বর দিন।',

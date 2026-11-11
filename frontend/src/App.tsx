@@ -35,7 +35,8 @@ export default function App() {
   const syncedExpiry = useRef(new Set<string>())
   const pendingHolds = useRef(new Set<string>())
   const isAdmin = window.location.pathname === '/admin'
-  const isApplication = window.location.pathname === '/application'
+  const isHome = window.location.pathname === '/'
+  const isApplication = window.location.pathname === '/application' || (isHome && Boolean(student))
   const isNewApplication = window.location.pathname === '/new-application'
   const isDashboard = !isAdmin && !isApplication && !isNewApplication
   const awaitingPayment = holds.filter(hold => hold.status === 'HELD' && hold.expiresAt &&
@@ -44,19 +45,13 @@ export default function App() {
   if (isAdmin) pageTitle = messages.adminDashboard
   if (isApplication) pageTitle = messages.applicationStatus
   if (isNewApplication) pageTitle = messages.startApplication
-  const showDashboard = new URLSearchParams(window.location.search).has('dashboard')
-  const redirectToStatus = window.location.pathname === '/' && Boolean(student) && !showDashboard
-  const { snapshot, disconnected } = useClassStream(!redirectToStatus)
+  const { snapshot, disconnected } = useClassStream(true)
   const classes = snapshot ?? loadedClasses
   const waitingSnapshot = (isApplication || isDashboard) && holds.some(hold => hold.status === 'PENDING')
     ? snapshot
     : undefined
   const [editingClass, setEditingClass] = useState<ClassSummary>()
   const selectedClass = classes.find(item => item.id === editingClass?.id)
-
-  useEffect(() => {
-    if (redirectToStatus) window.location.replace('/application')
-  }, [redirectToStatus])
 
   useEffect(() => {
     if (!student) return
@@ -159,7 +154,8 @@ export default function App() {
     pendingHolds.current.clear()
     setPromotionNotice(false)
     setActionError('')
-    refreshHolds()
+    setHoldsError('')
+    setHoldsLoading(Boolean(value))
   }
 
   async function runAction(action: () => Promise<void>) {
@@ -204,15 +200,13 @@ export default function App() {
     })
   }
 
-  if (redirectToStatus) return null
-
   return (
     <main>
       <header className="site-header">
         <a className="site-name" href="/">{messages.title}</a>
         <nav className="site-menu" aria-label={messages.navigation}>
-          <a href={student ? '/?dashboard=1' : '/'} aria-current={isDashboard ? 'page' : undefined}>{messages.dashboard}</a>
-          <a href="/application" aria-current={isApplication ? 'page' : undefined}>{messages.myHolds}</a>
+          <a href="/" aria-current={isHome ? 'page' : undefined}>{messages.dashboard}</a>
+          <a href="/application" aria-current={isApplication && !isHome ? 'page' : undefined}>{messages.myHolds}</a>
           <a href="/admin" aria-current={isAdmin ? 'page' : undefined}>{messages.adminMenu}</a>
         </nav>
         <select aria-label={language === 'en' ? 'Language' : 'ভাষা'}
@@ -227,7 +221,7 @@ export default function App() {
           <a className="start-action" href="/new-application">{messages.startApplication}</a>
         )}
       </div>
-      {(isApplication || isNewApplication) && <section id="student" className="panel student-section">
+      {(isHome || isApplication || isNewApplication) && <section id="student" className="panel student-section">
         <StudentBar student={student} busy={busy} onSave={handleStudentChange} />
         {!student && <p>{messages.studentPrompt}</p>}
         {!isApplication && student && <a href="#classes-title">{messages.chooseClass}</a>}
@@ -246,14 +240,6 @@ export default function App() {
           />}
         </>}
       </section>}
-      {isDashboard && student && !holdsLoading && !holdsError && awaitingPayment.length > 0 &&
-        <MyHolds
-          holds={awaitingPayment}
-          now={now}
-          busy={busy}
-          onChange={(id, confirm) => runAction(() => changeHold(id, student, confirm))}
-        />
-      }
       {actionError && <p role="alert">{actionError}</p>}
       {!isApplication && disconnected && <p role="status">{messages.streamDisconnected}</p>}
       {!isApplication && <div className={isAdmin ? 'layout' : undefined}>
