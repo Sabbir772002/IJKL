@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SchoolAdmission.Api.Config;
 using SchoolAdmission.Api.Data;
 
 namespace SchoolAdmission.Api.Services;
@@ -6,7 +7,7 @@ namespace SchoolAdmission.Api.Services;
 public sealed record HoldView(string HoldId, string ClassId, string ClassName, string Status, DateTime? ExpiresAt);
 
 public sealed class HoldService(
-    AdmissionDbContext db, ClassService classes, IConfiguration configuration, ILogger<HoldService> logger)
+    AdmissionDbContext db, ClassService classes, AppOptions options, ILogger<HoldService> logger)
 {
     public Task<HoldView?> GetAsync(string id, CancellationToken token) =>
         ReadHolds(null).SingleOrDefaultAsync(hold => hold.HoldId == id, token);
@@ -26,7 +27,7 @@ public sealed class HoldService(
             if (cls is null)
                 return Error(404, "NOT_FOUND", "Class not found.");
 
-            var classScope = configuration["STUDENT_HOLD_SCOPE"] == "class";
+            var classScope = options.ScopeByClass;
             var active = await db.Database.SqlQuery<bool>($"""
                 SELECT EXISTS (
                     SELECT 1 FROM holds h JOIN classes c ON c.id = h.class_id
@@ -42,7 +43,7 @@ public sealed class HoldService(
             if (cls.AvailableSeats == 0)
                 return Error(409, "SEAT_FULL", "This class has no available seats.");
 
-            var duration = PositiveSetting(configuration, "HOLD_DURATION_SECONDS", 600);
+            var duration = options.HoldDurationSeconds;
             await db.Database.ExecuteSqlAsync($"""
                 INSERT INTO holds (id, class_id, student_id, status, created_at, expires_at)
                 VALUES ({id}, {classId}, {student}, 'HELD', clock_timestamp(),
@@ -122,9 +123,6 @@ public sealed class HoldService(
 
     internal static string? FormatExpiry(DateTime? expiresAt) =>
         expiresAt?.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture);
-
-    internal static int PositiveSetting(IConfiguration configuration, string key, int fallback) =>
-        int.TryParse(configuration[key], out var value) && value > 0 ? value : fallback;
 
     internal static async Task NotifyAsync(AdmissionDbContext db, string payload, ILogger logger)
     {
