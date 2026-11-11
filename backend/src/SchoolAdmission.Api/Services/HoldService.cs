@@ -4,10 +4,10 @@ using SchoolAdmission.Api.Data;
 
 namespace SchoolAdmission.Api.Services;
 
-public sealed record HoldView(string HoldId, string ClassId, string ClassName, string Status, DateTime? ExpiresAt);
+public sealed record HoldView(string HoldId, string ClassId, string ClassName, string Status, DateTime? ExpiresAt, int? QueuePosition);
 
 public sealed class HoldService(
-    AdmissionDbContext db, ClassService classes, AppOptions options, ILogger<HoldService> logger)
+    AdmissionDbContext db, ClassService classes, AppOptions options, WaitlistService waitlist, ILogger<HoldService> logger)
 {
     public Task<HoldView?> GetAsync(string id, CancellationToken token) =>
         ReadHolds(null).SingleOrDefaultAsync(hold => hold.HoldId == id, token);
@@ -15,10 +15,11 @@ public sealed class HoldService(
     public Task<List<HoldView>> ListAsync(string student, CancellationToken token) =>
         ReadHolds(student).ToListAsync(token);
 
-    public async Task<IResult> ApplyAsync(string classId, string student, CancellationToken token)
+    public async Task<IResult> ApplyAsync(string classId, string student, CancellationToken token, bool joinWaitlist = false)
     {
         var id = Guid.NewGuid().ToString();
         HoldEntity hold;
+        int pending;
         await using (var transaction = await db.Database.BeginTransactionAsync(token))
         {
             await LockStudentAsync(student, token);
@@ -40,20 +41,32 @@ public sealed class HoldService(
 
             if (active)
                 return Error(409, "ALREADY_APPLIED", "This student already has an active application.");
-            if (cls.AvailableSeats == 0)
+            pending = await db.Holds.CountAsync(row => row.ClassId == classId && row.Status == "PENDING", token);
+            if (joinWaitlist)
+            {
+                if (cls.AvailableSeats > 0)
+                    return Error(409, "SEATS_AVAILABLE", "This class has an available seat.");
+                if (pending >= cls.HeldSeats)
+                    return Error(409, "WAITLIST_UNAVAILABLE", "No waitlist places are available.");
+            }
+            else if (cls.AvailableSeats <= pending)
                 return Error(409, "SEAT_FULL", "This class has no available seats.");
 
             var duration = options.HoldDurationSeconds;
+            var status = joinWaitlist ? "PENDING" : "HELD";
             await db.Database.ExecuteSqlAsync($"""
                 INSERT INTO holds (id, class_id, student_id, status, created_at, expires_at)
-                VALUES ({id}, {classId}, {student}, 'HELD', clock_timestamp(),
-                        clock_timestamp() + make_interval(secs => {(double)duration}))
+                VALUES ({id}, {classId}, {student}, {status}, clock_timestamp(),
+                        CASE WHEN {joinWaitlist} THEN NULL ELSE
+                            clock_timestamp() + make_interval(secs => {(double)duration}) END)
                 """, token);
             hold = await db.Holds.AsNoTracking().SingleAsync(row => row.Id == id, token);
             await transaction.CommitAsync(token);
         }
 
         await NotifyAsync(db, classId, logger);
+        if (joinWaitlist)
+            return Results.Created($"/holds/{id}", new { holdId = id, classId, studentId = student, hold.Status, queuePosition = pending + 1 });
         return Results.Created($"/holds/{id}", new
         {
             holdId = id, classId, studentId = student, hold.Status,
@@ -81,7 +94,7 @@ public sealed class HoldService(
 
             if (confirm && hold.Status == "CONFIRMED")
                 return Results.Ok(new { holdId = id, status = "CONFIRMED" });
-            if (hold.Status != "HELD")
+            if (hold.Status != "HELD" && (confirm || hold.Status != "PENDING"))
                 return Error(409, "INVALID_STATE", "This application is no longer held.");
 
             changed = confirm
@@ -91,10 +104,12 @@ public sealed class HoldService(
                     """, token)
                 : await db.Database.ExecuteSqlAsync($"""
                     UPDATE holds SET status = 'CANCELLED', cancelled_at = clock_timestamp(), cancelled_by = 'STUDENT'
-                    WHERE id = {id} AND status = 'HELD' AND expires_at > clock_timestamp()
+                    WHERE id = {id} AND (status = 'PENDING' OR (status = 'HELD' AND expires_at > clock_timestamp()))
                     """, token);
             if (changed == 0)
                 await db.Database.ExecuteSqlAsync($"UPDATE holds SET status = 'EXPIRED' WHERE id = {id}", token);
+            if (!confirm || changed == 0)
+                await waitlist.PromoteAsync(classId, token);
             await transaction.CommitAsync(token);
         }
 
@@ -109,7 +124,11 @@ public sealed class HoldService(
         SELECT h.id AS "HoldId", h.class_id AS "ClassId", c.name AS "ClassName",
             CASE WHEN h.status = 'HELD' AND h.expires_at <= clock_timestamp()
                 THEN 'EXPIRED' ELSE h.status END AS "Status",
-            h.expires_at AS "ExpiresAt"
+            h.expires_at AS "ExpiresAt",
+            CASE WHEN h.status = 'PENDING' THEN (
+                SELECT COUNT(*)::int FROM holds p WHERE p.class_id = h.class_id AND p.status = 'PENDING'
+                    AND (p.created_at, p.id) <= (h.created_at, h.id)
+            ) END AS "QueuePosition"
         FROM holds h JOIN classes c ON c.id = h.class_id
         WHERE ({student}::text IS NULL OR h.student_id = {student})
         ORDER BY h.created_at DESC, h.id DESC

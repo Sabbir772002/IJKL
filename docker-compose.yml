@@ -1,13 +1,12 @@
 services:
   db:
     image: postgres:16
-    container_name: school-admission-db
     environment:
       POSTGRES_DB: admission
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -15,6 +14,34 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      target: runtime
+    environment:
+      ConnectionStrings__Default: "${ConnectionStrings__Default:-Host=db;Port=5432;Database=admission;Username=postgres;Password=postgres}"
+      HOLD_DURATION_SECONDS: "${HOLD_DURATION_SECONDS:-600}"
+      SWEEP_INTERVAL_MS: "${SWEEP_INTERVAL_MS:-1000}"
+      STUDENT_HOLD_SCOPE: "${STUDENT_HOLD_SCOPE:-session}"
+      DEFAULT_SESSION: "${DEFAULT_SESSION:-2027}"
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:3000}"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8080}:8080"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    environment:
+      BACKEND_URL: "${BACKEND_URL:-http://localhost:8080}"
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+
 
 volumes:
   pgdata:

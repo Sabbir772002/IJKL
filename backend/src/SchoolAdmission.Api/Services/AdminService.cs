@@ -4,7 +4,7 @@ using SchoolAdmission.Api.Data;
 
 namespace SchoolAdmission.Api.Services;
 
-public sealed class AdminService(AdmissionDbContext db, ILogger<AdminService> logger)
+public sealed class AdminService(AdmissionDbContext db, WaitlistService waitlist, ILogger<AdminService> logger)
 {
     public async Task<IResult> DeleteClassAsync(string classId, CancellationToken token)
     {
@@ -83,6 +83,8 @@ public sealed class AdminService(AdmissionDbContext db, ILogger<AdminService> lo
             if (blockSeat && hold.Status != "PENDING")
                 await db.Database.ExecuteSqlAsync(
                     $"UPDATE classes SET blocked_seats = blocked_seats + 1 WHERE id = {classId}", token);
+            else
+                await waitlist.PromoteAsync(classId, token);
 
             await transaction.CommitAsync(token);
         }

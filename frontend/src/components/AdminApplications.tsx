@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { ApiError, cancelAdminHold, deleteClass, listAdminHolds } from '../api/client'
 import type { AdminHold, ClassSummary } from '../api/types'
-import { bn, errorMessages } from '../i18n/bn'
+import { messages, errorMessages } from '../i18n'
 
 type Props = {
   item: ClassSummary
@@ -36,7 +36,7 @@ export default function AdminApplications({ item, onDeleted, onChanged }: Props)
   }, [item.id, reload])
 
   async function removeClass() {
-    if (busy || !window.confirm(bn.confirmDeleteClass)) return
+    if (busy || !window.confirm(messages.confirmDeleteClass)) return
     setBusy(true)
     setError('')
     try {
@@ -55,7 +55,7 @@ export default function AdminApplications({ item, onDeleted, onChanged }: Props)
     const data = new FormData(event.currentTarget)
     const reason = String(data.get('reason')).trim()
     if (!reason) {
-      setError(bn.cancelReason)
+      setError(messages.cancelReason)
       return
     }
 
@@ -78,29 +78,29 @@ export default function AdminApplications({ item, onDeleted, onChanged }: Props)
 
   return (
     <section className="panel">
-      <h2>{bn.classApplications}</h2>
+      <h2>{messages.classApplications}</h2>
       <p>{item.name}</p>
       {error && <p role="alert">{error}</p>}
-      {loading && <p role="status">{bn.loadingHolds}</p>}
-      {!loading && holds.length === 0 && !error && <p>{bn.noHolds}</p>}
+      {loading && <p role="status">{messages.loadingHolds}</p>}
+      {!loading && holds.length === 0 && !error && <p>{messages.noHolds}</p>}
       <ul className="classes">
         {holds.map(hold => (
           <li key={hold.holdId}>
             <strong>{hold.studentId}</strong>
-            <p>{bn.status[hold.status]}</p>
-            {hold.cancelReason && <p>{bn.cancelReason}: {hold.cancelReason}</p>}
-            {active(hold) && <button type="button" disabled={busy || loading} onClick={() => setSelected(hold)}>{bn.cancel}</button>}
+            <p>{messages.status[hold.status]}</p>
+            {hold.cancelReason && <p>{messages.cancelReason}: {hold.cancelReason}</p>}
+            {active(hold) && <button type="button" disabled={busy || loading} onClick={() => setSelected(hold)}>{messages.cancel}</button>}
           </li>
         ))}
       </ul>
       {selected && <form onSubmit={cancel}>
         <p>{selected.studentId}</p>
-        <label>{bn.cancelReason}<input name="reason" required maxLength={500} /></label>
-        {selected.status !== 'PENDING' && <label><span><input type="checkbox" name="block" /> {bn.blockSeat}</span></label>}
-        <button disabled={busy}>{bn.cancel}</button>
+        <label>{messages.cancelReason}<input name="reason" required maxLength={500} /></label>
+        {selected.status !== 'PENDING' && <label><span><input type="checkbox" name="block" /> {messages.blockSeat}</span></label>}
+        <button disabled={busy}>{messages.cancel}</button>
       </form>}
       <p>
-        <button type="button" disabled={busy || loading || hasStudents} onClick={removeClass}>{bn.deleteClass}</button>
+        <button type="button" disabled={busy || loading || hasStudents} onClick={removeClass}>{messages.deleteClass}</button>
       </p>
       {hasStudents && <p>{errorMessages.CLASS_HAS_STUDENTS}</p>}
     </section>
@@ -112,6 +112,6 @@ function active(hold: AdminHold) {
 }
 
 function message(error: unknown) {
-  if (error instanceof ApiError) return errorMessages[error.code] ?? bn.serverError
-  return bn.networkError
+  if (error instanceof ApiError) return errorMessages[error.code] ?? messages.serverError
+  return messages.networkError
 }

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { bn } from '../i18n/bn'
+import { messages } from '../i18n'
 import { validStudent } from '../hooks/useStudent'
 
 type Props = { student: string; busy: boolean; onSave: (student: string) => void }
@@ -21,7 +21,7 @@ export default function StudentBar({ student, busy, onSave }: Props) {
   }
 
   return <form className="student-bar" onSubmit={save}>
-    <label>{bn.studentId}
+    <label>{messages.studentId}
       <input inputMode="numeric" maxLength={17} value={draft} disabled={busy}
         aria-invalid={invalid}
         onChange={event => {
@@ -29,7 +29,7 @@ export default function StudentBar({ student, busy, onSave }: Props) {
           setInvalid(false)
         }} required />
     </label>
-    <button disabled={busy}>{bn.saveStudent}</button>
-    {invalid && <p role="alert">{bn.invalidStudent}</p>}
+    <button disabled={busy}>{messages.saveStudent}</button>
+    {invalid && <p role="alert">{messages.invalidStudent}</p>}
   </form>
 }

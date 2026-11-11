@@ -49,9 +49,11 @@ export const bn = {
   previous: 'আগের পাতা',
   next: 'পরের পাতা',
   page: 'পাতা',
-  demoNotice: 'সার্ভারের সঙ্গে সংযোগ নেই। নমুনা শ্রেণি ও আসন দেখানো হচ্ছে। আবেদন বা পরিবর্তন করতে আবার সংযোগ করুন।',
   streamDisconnected: 'লাইভ সংযোগ বিচ্ছিন্ন। আবার সংযোগের চেষ্টা চলছে…',
   noSeats: 'আসন নেই',
+  joinWaitlist: 'অপেক্ষমাণ তালিকায় যোগ দিন',
+  queuePosition: 'তালিকায় অবস্থান',
+  promoted: 'আপনার আসন নিশ্চিত করার সুযোগ এসেছে, সময়ের মধ্যে ভর্তি ফি দিন।',
   myHolds: 'আমার আবেদন',
   noHolds: 'এখনো কোনো আবেদন নেই।',
   loadingHolds: 'আবেদন লোড হচ্ছে…',
@@ -65,21 +67,4 @@ export const bn = {
     EXPIRED: 'সময় শেষ',
     PENDING: 'অপেক্ষমাণ',
   },
-}
-
-export const number = new Intl.NumberFormat('bn-BD')
-
-export const errorMessages: Record<string, string> = {
-  CLASS_EXISTS: bn.duplicate,
-  VALIDATION_ERROR: bn.invalid,
-  INTERNAL: bn.serverError,
-  INVALID_STUDENT_ID: bn.invalidStudent,
-  SEAT_FULL: bn.noSeats,
-  ALREADY_APPLIED: 'এই শিক্ষাবর্ষে আপনার একটি সক্রিয় আবেদন আছে।',
-  HOLD_EXPIRED: 'আসন সংরক্ষণের সময় শেষ হয়েছে।',
-  INVALID_STATE: 'আবেদনটির বর্তমান অবস্থায় এই কাজটি করা যাবে না।',
-  FORBIDDEN: 'এই আবেদনটি অন্য শিক্ষার্থীর।',
-  NOT_FOUND: 'শ্রেণি বা আবেদনটি পাওয়া যায়নি।',
-  SEATS_BELOW_OCCUPIED: 'সংরক্ষিত ও নিশ্চিত আসনের চেয়ে মোট আসন কমানো যাবে না।',
-  CLASS_HAS_STUDENTS: 'সক্রিয় আবেদন থাকলে শ্রেণি সরানো যাবে না।',
 }

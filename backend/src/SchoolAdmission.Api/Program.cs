@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using SchoolAdmission.Api.Data;
 using SchoolAdmission.Api.Services;
 using System.Text.Json;
@@ -15,12 +16,20 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
 
 builder.Services.AddSingleton(services => AppOptions.Read(services.GetRequiredService<IConfiguration>()));
 builder.Services.AddDbContextFactory<AdmissionDbContext>((services, options) =>
-    options.UseNpgsql(services.GetRequiredService<IConfiguration>().GetConnectionString("Default")
-        ?? throw new InvalidOperationException("ConnectionStrings:Default is not configured.")));
+{
+    var configuration = services.GetRequiredService<IConfiguration>();
+    var connectionString = configuration.GetConnectionString("Default")
+        ?? throw new InvalidOperationException("ConnectionStrings:Default is not configured.");
+    var connection = new NpgsqlConnectionStringBuilder(connectionString);
+    if (!connection.ShouldSerialize("Maximum Pool Size"))
+        connection.MaxPoolSize = 32;
+    options.UseNpgsql(connection.ConnectionString);
+});
 builder.Services.AddHostedService<MigrationHostedService>();
 builder.Services.AddScoped<ClassService>();
 builder.Services.AddScoped<HoldService>();
 builder.Services.AddScoped<AdminService>();
+builder.Services.AddScoped<WaitlistService>();
 builder.Services.AddHostedService<ExpirySweeper>();
 builder.Services.AddSingleton<ClassStream>();
 builder.Services.AddHostedService(services => services.GetRequiredService<ClassStream>());

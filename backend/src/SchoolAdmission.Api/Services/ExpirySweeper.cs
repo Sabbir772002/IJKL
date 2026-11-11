@@ -20,7 +20,19 @@ public sealed class ExpirySweeper(
                 var expired = await db.Database.ExecuteSqlRawAsync(
                     "UPDATE holds SET status = 'EXPIRED' WHERE status = 'HELD' AND expires_at <= clock_timestamp()",
                     stoppingToken);
-                if (expired > 0)
+                var promoted = 0;
+                var waitingClasses = await db.Holds.AsNoTracking().Where(row => row.Status == "PENDING")
+                    .Select(row => row.ClassId).Distinct().ToListAsync(stoppingToken);
+                var waitlist = new WaitlistService(db, options);
+                foreach (var classId in waitingClasses)
+                {
+                    await using var transaction = await db.Database.BeginTransactionAsync(stoppingToken);
+                    await db.Database.ExecuteSqlAsync(
+                        $"SELECT 1 FROM classes WHERE id = {classId} FOR UPDATE", stoppingToken);
+                    promoted += await waitlist.PromoteAsync(classId, stoppingToken);
+                    await transaction.CommitAsync(stoppingToken);
+                }
+                if (expired > 0 || promoted > 0)
                     await HoldService.NotifyAsync(db, "sweep", logger);
             }
             catch (Exception exception) when (!stoppingToken.IsCancellationRequested)

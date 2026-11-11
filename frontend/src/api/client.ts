@@ -82,8 +82,9 @@ export async function deleteClass(id: string) {
   await request(`/classes/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
-export async function applyForClass(classId: string, student: string) {
-  await request(`/classes/${encodeURIComponent(classId)}/holds`, {
+export async function applyForClass(classId: string, student: string, waitlist = false) {
+  const action = waitlist ? 'waitlist' : 'holds'
+  await request(`/classes/${encodeURIComponent(classId)}/${action}`, {
     method: 'POST', headers: { 'X-Student-Id': student },
   })
 }

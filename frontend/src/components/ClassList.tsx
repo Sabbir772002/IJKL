@@ -1,6 +1,7 @@
+import type { ReactNode } from 'react'
 import { useState } from 'react'
 import type { ClassSummary } from '../api/types'
-import { bn, number } from '../i18n/bn'
+import { messages, number } from '../i18n'
 
 type Props = {
   classes: ClassSummary[]
@@ -11,15 +12,16 @@ type Props = {
   error: string
   onSessionChange: (session: string) => void
   onRetry: () => void
+  paymentActions?: (classId: string) => ReactNode
   canApply?: (item: ClassSummary) => boolean
   showShortlist: boolean
-  onApply: (id: string) => void
+  onApply: (id: string, waitlist: boolean) => void
   onEdit?: (item: ClassSummary) => void
 }
 
 export default function ClassList({
   classes, session, defaultSession, highlightedId, loading, error, onSessionChange, onRetry,
-  showShortlist, canApply, onApply, onEdit,
+  showShortlist, paymentActions, canApply, onApply, onEdit,
 }: Props) {
   const [page, setPage] = useState(1)
   const pageSize = 10
@@ -41,33 +43,33 @@ export default function ClassList({
   return (
     <section aria-labelledby="classes-title">
       <div className="section-head">
-        <h2 id="classes-title">{bn.classes}</h2>
-        <label>{bn.session}
+        <h2 id="classes-title">{messages.classes}</h2>
+        <label>{messages.session}
             <select value={session} onChange={event => {
               setPage(1)
               onSessionChange(event.target.value)
             }}>
-            <option value="">{bn.allSessions}</option>
+            <option value="">{messages.allSessions}</option>
             {sessions.map(year => <option key={year} value={year}>{/^\d+$/.test(year) ? number.format(Number(year)) : year}</option>)}
           </select>
         </label>
       </div>
-      {loading && <p role="status">{bn.loading}</p>}
+      {loading && <p role="status">{messages.loading}</p>}
       {!loading && error && (
         <div role="alert">
           <p>{error}</p>
-          <button type="button" onClick={onRetry}>{bn.retry}</button>
+          <button type="button" onClick={onRetry}>{messages.retry}</button>
         </div>
       )}
-      {showClasses && visible.length === 0 && <p className="empty">{bn.empty}</p>}
+      {showClasses && visible.length === 0 && <p className="empty">{messages.empty}</p>}
       {showClasses && showShortlist && fewestSeats.length > 0 && (
         <section className="panel shortlist">
-          <h3>{bn.fewestSeats}</h3>
+          <h3>{messages.fewestSeats}</h3>
           <ol>
             {fewestSeats.map(item => (
               <li key={item.id}>
                 <strong>{item.name}</strong>
-                <span>{number.format(item.availableSeats)}{bn.available}</span>
+                <span>{number.format(item.availableSeats)}{messages.available}</span>
               </li>
             ))}
           </ol>
@@ -79,28 +81,29 @@ export default function ClassList({
             <li key={item.id} className={item.id === highlightedId ? 'highlight' : undefined}>
               <div className="class-head">
                 <h3>{item.name}</h3>
-                <span className="available">{number.format(item.availableSeats)}{bn.available}</span>
+                <span className="available">{number.format(item.availableSeats)}{messages.available}</span>
               </div>
-              <p className="class-session">{bn.session} {item.session}</p>
+              <p className="class-session">{messages.session} {item.session}</p>
               <progress className="seat-progress" value={item.confirmedSeats} max={item.totalSeats}
-                aria-label={bn.confirmed} />
+                aria-label={messages.confirmed} />
               <dl>
-                <div><dt>{bn.total}</dt><dd>{number.format(item.totalSeats)}</dd></div>
-                <div><dt>{bn.held}</dt><dd>{number.format(item.heldSeats)}</dd></div>
-                <div><dt>{bn.confirmed}</dt><dd>{number.format(item.confirmedSeats)}</dd></div>
-                {item.blockedSeats > 0 && <div><dt>{bn.blocked}</dt><dd>{number.format(item.blockedSeats)}</dd></div>}
+                <div><dt>{messages.total}</dt><dd>{number.format(item.totalSeats)}</dd></div>
+                <div><dt>{messages.held}</dt><dd>{number.format(item.heldSeats)}</dd></div>
+                <div><dt>{messages.confirmed}</dt><dd>{number.format(item.confirmedSeats)}</dd></div>
+                {item.blockedSeats > 0 && <div><dt>{messages.blocked}</dt><dd>{number.format(item.blockedSeats)}</dd></div>}
               </dl>
-              {canApply && <button type="button" disabled={!canApply(item)} onClick={() => onApply(item.id)}>
-                {item.availableSeats > 0 ? bn.apply : bn.noSeats}
-              </button>}
-              {onEdit && <button type="button" onClick={() => onEdit(item)}>{bn.editClass}</button>}
+              {paymentActions?.(item.id) ?? (canApply && <button type="button" disabled={!canApply(item)}
+                onClick={() => onApply(item.id, item.availableSeats === 0)}>
+                {item.availableSeats > 0 ? messages.apply : item.heldSeats > 0 ? messages.joinWaitlist : messages.noSeats}
+              </button>)}
+              {onEdit && <button type="button" onClick={() => onEdit(item)}>{messages.editClass}</button>}
             </li>
           ))}
         </ul>
-        {pageCount > 1 && <nav className="pagination" aria-label={bn.classes}>
-          <button type="button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>{bn.previous}</button>
-          <span aria-live="polite">{bn.page} {number.format(currentPage)} / {number.format(pageCount)}</span>
-          <button type="button" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>{bn.next}</button>
+        {pageCount > 1 && <nav className="pagination" aria-label={messages.classes}>
+          <button type="button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>{messages.previous}</button>
+          <span aria-live="polite">{messages.page} {number.format(currentPage)} / {number.format(pageCount)}</span>
+          <button type="button" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>{messages.next}</button>
         </nav>}
       </>}
     </section>

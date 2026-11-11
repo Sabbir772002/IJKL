@@ -1,25 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError, applyForClass, changeHold, listClasses, listHolds, serverNow } from './api/client'
-import { demoClasses } from './api/demoClasses'
 import type { ClassSummary, Hold } from './api/types'
 import ClassForm from './components/ClassForm'
 import AdminApplications from './components/AdminApplications'
 import ClassList from './components/ClassList'
 import MyHolds from './components/MyHolds'
+import PaymentActions from './components/PaymentActions'
 import StudentBar from './components/StudentBar'
 import { useStudent } from './hooks/useStudent'
 import { useClassStream } from './hooks/useClassStream'
-import { bn, errorMessages } from './i18n/bn'
+import { changeLanguage, errorMessages, language, messages } from './i18n'
 
 const defaultSession = '2027'
 
 export default function App() {
   const [loadedClasses, setClasses] = useState<ClassSummary[]>([])
-  const [session, setSession] = useState(defaultSession)
+  const applicationClass = window.location.pathname === '/new-application'
+    ? new URLSearchParams(window.location.search)
+    : undefined
+  const [session, setSession] = useState(applicationClass?.get('session') ?? defaultSession)
   const [loading, setLoading] = useState(true)
   const [listError, setListError] = useState('')
-  const [usingDemo, setUsingDemo] = useState(false)
-  const [highlightedId, setHighlightedId] = useState<string>()
+  const [highlightedId, setHighlightedId] = useState(applicationClass?.get('class') ?? undefined)
   const [reload, setReload] = useState(0)
   const { student, saveStudent } = useStudent()
   const [holds, setHolds] = useState<Hold[]>([])
@@ -27,22 +29,28 @@ export default function App() {
   const [holdsError, setHoldsError] = useState('')
   const [holdsReload, setHoldsReload] = useState(0)
   const [actionError, setActionError] = useState('')
+  const [promotionNotice, setPromotionNotice] = useState(false)
   const [busy, setBusy] = useState(false)
   const [now, setNow] = useState(serverNow)
   const syncedExpiry = useRef(new Set<string>())
+  const pendingHolds = useRef(new Set<string>())
   const isAdmin = window.location.pathname === '/admin'
   const isApplication = window.location.pathname === '/application'
   const isNewApplication = window.location.pathname === '/new-application'
   const isDashboard = !isAdmin && !isApplication && !isNewApplication
-  let pageTitle = bn.dashboard
-  if (isAdmin) pageTitle = bn.adminDashboard
-  if (isApplication) pageTitle = bn.applicationStatus
-  if (isNewApplication) pageTitle = bn.startApplication
+  const awaitingPayment = holds.filter(hold => hold.status === 'HELD' && hold.expiresAt &&
+    Date.parse(hold.expiresAt) > now)
+  let pageTitle = messages.dashboard
+  if (isAdmin) pageTitle = messages.adminDashboard
+  if (isApplication) pageTitle = messages.applicationStatus
+  if (isNewApplication) pageTitle = messages.startApplication
   const showDashboard = new URLSearchParams(window.location.search).has('dashboard')
   const redirectToStatus = window.location.pathname === '/' && Boolean(student) && !showDashboard
   const { snapshot, disconnected } = useClassStream(!redirectToStatus)
   const classes = snapshot ?? loadedClasses
-  const showingDemo = !snapshot && usingDemo
+  const waitingSnapshot = (isApplication || isDashboard) && holds.some(hold => hold.status === 'PENDING')
+    ? snapshot
+    : undefined
   const [editingClass, setEditingClass] = useState<ClassSummary>()
   const selectedClass = classes.find(item => item.id === editingClass?.id)
 
@@ -58,7 +66,12 @@ export default function App() {
       try {
         const rows = await listHolds(student, controller.signal)
         if (!controller.signal.aborted) {
+          if (rows.some(hold => hold.status === 'HELD' && pendingHolds.current.has(hold.holdId))) {
+            setPromotionNotice(true)
+          }
+          pendingHolds.current = new Set(rows.filter(hold => hold.status === 'PENDING').map(hold => hold.holdId))
           setHolds(rows)
+          setHoldsError('')
           setNow(serverNow())
         }
       } catch (error) {
@@ -70,7 +83,7 @@ export default function App() {
 
     loadHolds()
     return () => controller.abort()
-  }, [student, holdsReload])
+  }, [student, holdsReload, waitingSnapshot])
 
   useEffect(() => {
     if (!holds.some(hold => hold.status === 'HELD')) return
@@ -96,17 +109,11 @@ export default function App() {
         const rows = await listClasses(controller.signal)
         if (!controller.signal.aborted) {
           setClasses(rows)
-          setUsingDemo(false)
+          setListError('')
         }
       } catch (error) {
         if (controller.signal.aborted) return
-        if (error instanceof TypeError || (error instanceof ApiError && error.code === 'NETWORK')) {
-          setClasses(demoClasses)
-          setUsingDemo(true)
-          return
-        }
-        setUsingDemo(false)
-        let message = bn.networkError
+        let message = messages.networkError
         if (error instanceof ApiError) {
           message = errorMessages[error.code] ?? message
         }
@@ -149,6 +156,8 @@ export default function App() {
     if (value === student) return
     saveStudent(value)
     setHolds([])
+    pendingHolds.current.clear()
+    setPromotionNotice(false)
     setActionError('')
     refreshHolds()
   }
@@ -159,6 +168,7 @@ export default function App() {
     setActionError('')
     try {
       await action()
+      setPromotionNotice(false)
     } catch (error) {
       setActionError(errorMessage(error))
     } finally {
@@ -168,15 +178,25 @@ export default function App() {
     }
   }
 
-  function handleApply(classId: string) {
+  function handleApply(classId: string, waitlist: boolean) {
+    if (isDashboard && !student) {
+      const selected = classes.find(item => item.id === classId)
+      if (selected) {
+        const query = new URLSearchParams({ class: selected.id, session: selected.session })
+        window.location.assign(`/new-application?${query}`)
+      }
+      return
+    }
     return runAction(async () => {
-      await applyForClass(classId, student)
+      await applyForClass(classId, student, waitlist)
       window.location.assign('/application')
     })
   }
 
   function canApply(item: ClassSummary) {
-    if (showingDemo || !student || busy || holdsLoading || holdsError || item.availableSeats <= 0) return false
+    if (item.availableSeats <= 0 && item.heldSeats === 0) return false
+    if (isDashboard && !student) return true
+    if (!student || busy || holdsLoading || holdsError) return false
     return !holds.some(hold => {
       if (hold.status !== 'HELD' && hold.status !== 'CONFIRMED' && hold.status !== 'PENDING') return false
       if (hold.status === 'HELD' && hold.expiresAt && Date.parse(hold.expiresAt) <= now) return false
@@ -189,28 +209,34 @@ export default function App() {
   return (
     <main>
       <header className="site-header">
-        <a className="site-name" href="/">{bn.title}</a>
-        <nav className="site-menu" aria-label={bn.navigation}>
-          <a href={student ? '/?dashboard=1' : '/'} aria-current={isDashboard ? 'page' : undefined}>{bn.dashboard}</a>
-          <a href="/application" aria-current={isApplication ? 'page' : undefined}>{bn.myHolds}</a>
-          <a href="/admin" aria-current={isAdmin ? 'page' : undefined}>{bn.adminMenu}</a>
+        <a className="site-name" href="/">{messages.title}</a>
+        <nav className="site-menu" aria-label={messages.navigation}>
+          <a href={student ? '/?dashboard=1' : '/'} aria-current={isDashboard ? 'page' : undefined}>{messages.dashboard}</a>
+          <a href="/application" aria-current={isApplication ? 'page' : undefined}>{messages.myHolds}</a>
+          <a href="/admin" aria-current={isAdmin ? 'page' : undefined}>{messages.adminMenu}</a>
         </nav>
+        <select aria-label={language === 'en' ? 'Language' : 'ভাষা'}
+          value={language} onChange={event => changeLanguage(event.target.value)}>
+          <option value="bn" lang="bn">বাংলা</option>
+          <option value="en" lang="en">English</option>
+        </select>
       </header>
       <div className="page-heading">
         <h1>{pageTitle}</h1>
         {!isAdmin && !isNewApplication && (
-          <a className="start-action" href="/new-application">{bn.startApplication}</a>
+          <a className="start-action" href="/new-application">{messages.startApplication}</a>
         )}
       </div>
       {(isApplication || isNewApplication) && <section id="student" className="panel student-section">
         <StudentBar student={student} busy={busy} onSave={handleStudentChange} />
-        {!student && <p>{bn.studentPrompt}</p>}
-        {!isApplication && student && <a href="#classes-title">{bn.chooseClass}</a>}
+        {!student && <p>{messages.studentPrompt}</p>}
+        {!isApplication && student && <a href="#classes-title">{messages.chooseClass}</a>}
         {isApplication && student && <>
-          {holdsLoading && <p role="status">{bn.loadingHolds}</p>}
+          {promotionNotice && <p role="status">{messages.promoted}</p>}
+          {holdsLoading && <p role="status">{messages.loadingHolds}</p>}
           {holdsError && <div role="alert">
             <p>{holdsError}</p>
-            <button type="button" onClick={refreshHolds}>{bn.retry}</button>
+            <button type="button" onClick={refreshHolds}>{messages.retry}</button>
           </div>}
           {!holdsLoading && !holdsError && <MyHolds
             holds={holds}
@@ -220,12 +246,16 @@ export default function App() {
           />}
         </>}
       </section>}
+      {isDashboard && student && !holdsLoading && !holdsError && awaitingPayment.length > 0 &&
+        <MyHolds
+          holds={awaitingPayment}
+          now={now}
+          busy={busy}
+          onChange={(id, confirm) => runAction(() => changeHold(id, student, confirm))}
+        />
+      }
       {actionError && <p role="alert">{actionError}</p>}
-      {!isApplication && disconnected && !showingDemo && <p role="status">{bn.streamDisconnected}</p>}
-      {!isApplication && showingDemo && <div className="panel student-section" role="status">
-        <p>{bn.demoNotice}</p>
-        <button type="button" disabled={loading} onClick={refresh}>{bn.retry}</button>
-      </div>}
+      {!isApplication && disconnected && <p role="status">{messages.streamDisconnected}</p>}
       {!isApplication && <div className={isAdmin ? 'layout' : undefined}>
         <ClassList
           classes={classes}
@@ -237,11 +267,20 @@ export default function App() {
           onSessionChange={setSession}
           onRetry={refresh}
           showShortlist={isDashboard || isNewApplication}
-          canApply={isNewApplication ? canApply : undefined}
+          canApply={isDashboard || isNewApplication ? canApply : undefined}
           onApply={handleApply}
-          onEdit={isAdmin && !showingDemo ? setEditingClass : undefined}
+          paymentActions={isDashboard || isNewApplication ? classId => {
+            const hold = awaitingPayment.find(item => item.classId === classId)
+            if (!hold?.expiresAt) return null
+            return <PaymentActions
+              seconds={Math.ceil((Date.parse(hold.expiresAt) - now) / 1000)}
+              busy={busy || holdsLoading || Boolean(holdsError)}
+              onChange={confirm => runAction(() => changeHold(hold.holdId, student, confirm))}
+            />
+          } : undefined}
+          onEdit={isAdmin ? setEditingClass : undefined}
         />
-        {isAdmin && !showingDemo && <div className="sidebar">
+        {isAdmin && <div className="sidebar">
           <ClassForm key={selectedClass?.id ?? 'new'} editing={selectedClass}
             defaultSession={defaultSession} onCreated={handleCreated} onDuplicate={handleDuplicate}
             onCancelEdit={() => setEditingClass(undefined)} />
@@ -252,12 +291,12 @@ export default function App() {
             }} />}
         </div>}
       </div>}
-      <footer className="site-footer">{bn.title}</footer>
+      <footer className="site-footer">{messages.title}</footer>
     </main>
   )
 }
 
 function errorMessage(error: unknown) {
-  if (error instanceof ApiError) return errorMessages[error.code] ?? bn.serverError
-  return bn.networkError
+  if (error instanceof ApiError) return errorMessages[error.code] ?? messages.serverError
+  return messages.networkError
 }

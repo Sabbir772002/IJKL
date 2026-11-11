@@ -4,6 +4,11 @@ public static class HoldEndpoints
 {
     public static void MapHoldEndpoints(this WebApplication app)
     {
+        app.MapPost("/classes/{classId}/waitlist", async (
+            string classId, HttpRequest request, HoldService holds, CancellationToken token) =>
+            ReadStudent(request) is { } student
+                ? await holds.ApplyAsync(classId, student, token, joinWaitlist: true)
+                : InvalidStudent());
         app.MapPost("/classes/{classId}/holds", async (
             string classId, HttpRequest request, HoldService holds, CancellationToken token) =>
             ReadStudent(request) is { } student ? await holds.ApplyAsync(classId, student, token) : InvalidStudent());
@@ -25,7 +30,7 @@ public static class HoldEndpoints
             ReadStudent(request) is { } student
                 ? Results.Ok((await holds.ListAsync(student, token)).Select(hold => new
                 {
-                    hold.HoldId, hold.ClassId, hold.ClassName, hold.Status,
+                    hold.HoldId, hold.ClassId, hold.ClassName, hold.Status, hold.QueuePosition,
                     expiresAt = HoldService.FormatExpiry(hold.ExpiresAt)
                 }))
                 : InvalidStudent());

@@ -10,7 +10,7 @@ public sealed record ClassSeatRow(
     public int AvailableSeats => Math.Max(0, TotalSeats - HeldSeats - ConfirmedSeats - BlockedSeats);
 }
 
-public sealed class ClassService(AdmissionDbContext db, ILogger<ClassService> logger)
+public sealed class ClassService(AdmissionDbContext db, WaitlistService waitlist, ILogger<ClassService> logger)
 {
     public Task<List<ClassSeatRow>> ListAsync(string? session, CancellationToken token) =>
         ReadClasses(null, session, null).ToListAsync(token);
@@ -77,6 +77,11 @@ public sealed class ClassService(AdmissionDbContext db, ILogger<ClassService> lo
                 WHERE id = {id}
                 """, token);
             updated = (await GetAsync(id, token))!;
+            if (updated.AvailableSeats > current.AvailableSeats)
+            {
+                await waitlist.PromoteAsync(id, token);
+                updated = (await GetAsync(id, token))!;
+            }
             await transaction.CommitAsync(token);
         }
 

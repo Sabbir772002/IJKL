@@ -17,6 +17,7 @@ export type Hold = {
   className: string
   status: 'HELD' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED' | 'PENDING'
   expiresAt: string | null
+  queuePosition?: number | null
 }
 
 export type AdminHold = Omit<Hold, 'classId' | 'className'> & {
