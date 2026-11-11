@@ -5,6 +5,13 @@ using System.Text.Json;
 using SchoolAdmission.Api.Config;
 
 var builder = WebApplication.CreateBuilder(args);
+var origins = (builder.Configuration["CORS_ORIGINS"] ?? "http://localhost:3000")
+    .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
+    .WithOrigins(origins)
+    .WithHeaders("Content-Type", "X-Student-Id")
+    .WithExposedHeaders("Date")
+    .WithMethods("GET", "POST", "PATCH", "DELETE", "OPTIONS")));
 
 builder.Services.AddSingleton(services => AppOptions.Read(services.GetRequiredService<IConfiguration>()));
 builder.Services.AddDbContextFactory<AdmissionDbContext>((services, options) =>
@@ -18,6 +25,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
 
 var app = builder.Build();
+app.UseCors();
 
 app.MapGet("/", () => "Hello World!");
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
