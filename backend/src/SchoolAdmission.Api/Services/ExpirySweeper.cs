@@ -1,16 +1,17 @@
 using Microsoft.EntityFrameworkCore;
+using SchoolAdmission.Api.Config;
 using SchoolAdmission.Api.Data;
 
 namespace SchoolAdmission.Api.Services;
 
 public sealed class ExpirySweeper(
-    IDbContextFactory<AdmissionDbContext> factory, IConfiguration configuration,
+    IDbContextFactory<AdmissionDbContext> factory, AppOptions options,
     ILogger<ExpirySweeper> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(
-            HoldService.PositiveSetting(configuration, "SWEEP_INTERVAL_MS", 1000)));
+            options.SweepIntervalMs));
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             try

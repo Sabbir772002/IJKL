@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SchoolAdmission.Api.Config;
 
 namespace SchoolAdmission.Api.Services;
 
@@ -18,7 +19,7 @@ public static class ClassEndpoints
     }
 
     private static async Task<IResult> CreateAsync(
-        HttpRequest request, IConfiguration configuration, ClassService classes, CancellationToken token)
+        HttpRequest request, AppOptions options, ClassService classes, CancellationToken token)
     {
         if (!request.HasJsonContentType())
             return Error(400, "VALIDATION_ERROR", "Provide a JSON request body.");
@@ -40,8 +41,7 @@ public static class ClassEndpoints
         if (input!.TotalSeats is < 1 or > 100000)
             return Error(400, "VALIDATION_ERROR", "Total seats must be an integer from 1 to 100000.");
 
-        var defaultSession = configuration["DEFAULT_SESSION"]?.Trim();
-        var session = input.Session?.Trim() ?? (string.IsNullOrEmpty(defaultSession) ? "2027" : defaultSession);
+        var session = input.Session?.Trim() ?? options.DefaultSession;
         if (session.Length is < 1 or > 32 || session.Contains('\0'))
             return Error(400, "VALIDATION_ERROR", "Session must contain 1 to 32 characters.");
 
