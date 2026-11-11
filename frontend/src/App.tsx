@@ -3,16 +3,18 @@ import { ApiError, applyForClass, changeHold, listClasses, listHolds, serverNow 
 import { demoClasses } from './api/demoClasses'
 import type { ClassSummary, Hold } from './api/types'
 import ClassForm from './components/ClassForm'
+import AdminApplications from './components/AdminApplications'
 import ClassList from './components/ClassList'
 import MyHolds from './components/MyHolds'
 import StudentBar from './components/StudentBar'
 import { useStudent } from './hooks/useStudent'
+import { useClassStream } from './hooks/useClassStream'
 import { bn, errorMessages } from './i18n/bn'
 
 const defaultSession = '2027'
 
 export default function App() {
-  const [classes, setClasses] = useState<ClassSummary[]>([])
+  const [loadedClasses, setClasses] = useState<ClassSummary[]>([])
   const [session, setSession] = useState(defaultSession)
   const [loading, setLoading] = useState(true)
   const [listError, setListError] = useState('')
@@ -38,7 +40,11 @@ export default function App() {
   if (isNewApplication) pageTitle = bn.startApplication
   const showDashboard = new URLSearchParams(window.location.search).has('dashboard')
   const redirectToStatus = window.location.pathname === '/' && Boolean(student) && !showDashboard
+  const { snapshot, disconnected } = useClassStream(!redirectToStatus)
+  const classes = snapshot ?? loadedClasses
+  const showingDemo = !snapshot && usingDemo
   const [editingClass, setEditingClass] = useState<ClassSummary>()
+  const selectedClass = classes.find(item => item.id === editingClass?.id)
 
   useEffect(() => {
     if (redirectToStatus) window.location.replace('/application')
@@ -170,7 +176,7 @@ export default function App() {
   }
 
   function canApply(item: ClassSummary) {
-    if (usingDemo || !student || busy || holdsLoading || holdsError || item.availableSeats <= 0) return false
+    if (showingDemo || !student || busy || holdsLoading || holdsError || item.availableSeats <= 0) return false
     return !holds.some(hold => {
       if (hold.status !== 'HELD' && hold.status !== 'CONFIRMED' && hold.status !== 'PENDING') return false
       if (hold.status === 'HELD' && hold.expiresAt && Date.parse(hold.expiresAt) <= now) return false
@@ -215,7 +221,8 @@ export default function App() {
         </>}
       </section>}
       {actionError && <p role="alert">{actionError}</p>}
-      {!isApplication && usingDemo && <div className="panel student-section" role="status">
+      {!isApplication && disconnected && !showingDemo && <p role="status">{bn.streamDisconnected}</p>}
+      {!isApplication && showingDemo && <div className="panel student-section" role="status">
         <p>{bn.demoNotice}</p>
         <button type="button" disabled={loading} onClick={refresh}>{bn.retry}</button>
       </div>}
@@ -225,18 +232,25 @@ export default function App() {
           session={session}
           defaultSession={defaultSession}
           highlightedId={highlightedId}
-          loading={loading}
-          error={listError}
+          loading={!snapshot && loading}
+          error={snapshot ? '' : listError}
           onSessionChange={setSession}
           onRetry={refresh}
           showShortlist={isDashboard || isNewApplication}
           canApply={isNewApplication ? canApply : undefined}
           onApply={handleApply}
-          onEdit={isAdmin && !usingDemo ? setEditingClass : undefined}
+          onEdit={isAdmin && !showingDemo ? setEditingClass : undefined}
         />
-        {isAdmin && !usingDemo && <ClassForm key={editingClass?.id ?? 'new'} editing={editingClass}
-          defaultSession={defaultSession} onCreated={handleCreated} onDuplicate={handleDuplicate}
-          onCancelEdit={() => setEditingClass(undefined)} />}
+        {isAdmin && !showingDemo && <div className="sidebar">
+          <ClassForm key={selectedClass?.id ?? 'new'} editing={selectedClass}
+            defaultSession={defaultSession} onCreated={handleCreated} onDuplicate={handleDuplicate}
+            onCancelEdit={() => setEditingClass(undefined)} />
+          {selectedClass && <AdminApplications key={selectedClass.id} item={selectedClass}
+            onChanged={refresh} onDeleted={() => {
+              setEditingClass(undefined)
+              refresh()
+            }} />}
+        </div>}
       </div>}
       <footer className="site-footer">{bn.title}</footer>
     </main>

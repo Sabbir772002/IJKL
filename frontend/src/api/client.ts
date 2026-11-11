@@ -1,4 +1,4 @@
-import type { ClassInput, ClassSummary, Hold } from './types'
+import type { AdminHold, ClassInput, ClassSummary, Hold } from './types'
 
 let serverOffset: number | undefined
 
@@ -17,11 +17,16 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path: string, options?: RequestInit) {
+export function apiUrl() {
   const { __CONFIG__ } = window as Window & { __CONFIG__?: { API_URL?: string } }
-  if (!__CONFIG__?.API_URL) throw new ApiError('NETWORK')
+  return __CONFIG__?.API_URL?.replace(/\/+$/, '')
+}
 
-  const response = await fetch(__CONFIG__.API_URL.replace(/\/+$/, '') + path, options)
+async function request(path: string, options?: RequestInit) {
+  const url = apiUrl()
+  if (!url) throw new ApiError('NETWORK')
+
+  const response = await fetch(url + path, options)
   const date = response.headers.get('Date')
   if (serverOffset === undefined && date) {
     const serverTime = Date.parse(date)
@@ -52,12 +57,29 @@ export async function listHolds(student: string, signal: AbortSignal): Promise<H
   return response.json()
 }
 
-export async function editClass(id: string, name: string, totalSeats: number) {
+export async function editClass(id: string, name: string, totalSeats: number, blockedSeats?: number) {
   await request(`/classes/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, totalSeats }),
+    body: JSON.stringify({ name, totalSeats, blockedSeats }),
   })
+}
+
+export async function listAdminHolds(id: string, signal: AbortSignal): Promise<AdminHold[]> {
+  const response = await request(`/admin/classes/${encodeURIComponent(id)}/holds`, { signal })
+  return response.json()
+}
+
+export async function cancelAdminHold(id: string, reason: string, blockSeat: boolean) {
+  await request(`/admin/holds/${encodeURIComponent(id)}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason, blockSeat }),
+  })
+}
+
+export async function deleteClass(id: string) {
+  await request(`/classes/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
 export async function applyForClass(classId: string, student: string) {

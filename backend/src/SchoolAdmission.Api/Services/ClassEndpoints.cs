@@ -70,7 +70,7 @@ public static class ClassEndpoints
             return Error(400, "VALIDATION_ERROR", "Provide valid class details as JSON.");
         }
 
-        if (input is null || (input.Name is null && input.TotalSeats is null))
+        if (input is null || (input.Name is null && input.TotalSeats is null && input.BlockedSeats is null))
             return Error(400, "VALIDATION_ERROR", "Provide a class name or seat count.");
 
         var name = input.Name?.Trim();
@@ -79,7 +79,7 @@ public static class ClassEndpoints
         if (input.TotalSeats is < 1 or > 100000)
             return Error(400, "VALIDATION_ERROR", "Total seats must be an integer from 1 to 100000.");
 
-        return await classes.EditAsync(classId, name, input.TotalSeats, token);
+        return await classes.EditAsync(classId, name, input.TotalSeats, input.BlockedSeats, token);
     }
 
     internal static IResult Duplicate(ClassSeatRow existing) => Results.Conflict(new
@@ -91,5 +91,5 @@ public static class ClassEndpoints
         Results.Json(new { error = new { code, message } }, statusCode: status);
 
     private sealed record CreateClassRequest(string? Name, int TotalSeats, string? Session);
-    private sealed record EditClassRequest(string? Name, int? TotalSeats);
+    private sealed record EditClassRequest(string? Name, int? TotalSeats, int? BlockedSeats);
 }

@@ -156,6 +156,70 @@ public sealed class AdmissionTests(AdmissionFactory factory) : IClassFixture<Adm
             body: new { name = "Class 6", totalSeats = 1, session = NewSession() })).Status);
     }
 
+    [Fact]
+    public async Task AdminCanEditClassAndCannotReduceSeatsBelowOccupancy()
+    {
+        var session = NewSession();
+        var id = await CreateClass(3, session);
+        var other = await CreateClass(3, session);
+        var path = $"/classes/{id}";
+        var name = (await Send(HttpMethod.Get, $"/classes/{other}")).Json.GetProperty("name").GetString();
+        AssertError(await Send(HttpMethod.Patch, path, body: new { name }), HttpStatusCode.Conflict, "CLASS_EXISTS");
+        var edited = await Send(HttpMethod.Patch, path, body: new { name = "Renamed", totalSeats = 4, blockedSeats = 2 });
+        Assert.Equal(HttpStatusCode.OK, edited.Status);
+        Assert.Equal("Renamed", edited.Json.GetProperty("name").GetString());
+        Assert.Equal(2, edited.Json.GetProperty("availableSeats").GetInt32());
+        await Hold(id, Student());
+        await Hold(id, Student());
+        AssertError(await Send(HttpMethod.Patch, path, body: new { totalSeats = 1 }),
+            HttpStatusCode.Conflict, "SEATS_BELOW_OCCUPIED");
+        Assert.Equal(HttpStatusCode.OK, (await Send(HttpMethod.Patch, path, body: new { totalSeats = 2 })).Status);
+        Assert.Equal(0, await Seats(id, "blockedSeats"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AdminCancellationFreesOrBlocksSeat(bool blockSeat)
+    {
+        var id = await CreateClass();
+        var student = Student();
+        var hold = await Hold(id, student);
+        var cancelPath = $"/admin/holds/{hold}/cancel";
+        AssertError(await Send(HttpMethod.Post, cancelPath, body: new { reason = " " }),
+            HttpStatusCode.BadRequest, "VALIDATION_ERROR");
+        Assert.Equal(HttpStatusCode.NoContent, (await Send(HttpMethod.Post, cancelPath,
+            body: new { reason = "Document review", blockSeat })).Status);
+        Assert.Equal(blockSeat ? 1 : 0, await Seats(id, "blockedSeats"));
+        var history = await Send(HttpMethod.Get, $"/admin/classes/{id}/holds");
+        Assert.Equal(HttpStatusCode.OK, history.Status);
+        var entry = Assert.Single(history.Json.EnumerateArray());
+        Assert.Equal("CANCELLED", entry.GetProperty("status").GetString());
+        Assert.Equal("ADMIN", entry.GetProperty("cancelledBy").GetString());
+        Assert.Equal("Document review", entry.GetProperty("cancelReason").GetString());
+
+        var applicants = await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => Apply(id, Student())));
+        Assert.Equal(blockSeat ? 0 : 1, applicants.Count(row => row.Status == HttpStatusCode.Created));
+        Assert.All(applicants.Where(row => row.Status != HttpStatusCode.Created),
+            row => AssertError(row, HttpStatusCode.Conflict, "SEAT_FULL"));
+    }
+
+    [Fact]
+    public async Task AdminSoftDeletesOnlyClassesWithoutActiveApplications()
+    {
+        var id = await CreateClass();
+        var student = Student();
+        var hold = await Hold(id, student);
+        var path = $"/classes/{id}";
+        AssertError(await Send(HttpMethod.Delete, path), HttpStatusCode.Conflict, "CLASS_HAS_STUDENTS");
+        Assert.Equal(HttpStatusCode.NoContent, (await Send(HttpMethod.Delete, $"/holds/{hold}", student)).Status);
+        Assert.Equal(HttpStatusCode.NoContent, (await Send(HttpMethod.Delete, path)).Status);
+        AssertError(await Send(HttpMethod.Get, path), HttpStatusCode.NotFound, "NOT_FOUND");
+        AssertError(await Apply(id, Student()), HttpStatusCode.NotFound, "NOT_FOUND");
+        var history = await Send(HttpMethod.Get, "/me/holds", student);
+        Assert.Equal("CANCELLED", Assert.Single(history.Json.EnumerateArray()).GetProperty("status").GetString());
+    }
+
     private async Task<string> CreateClass(int totalSeats = 1, string? session = null)
     {
         var result = await Send(HttpMethod.Post, "/classes", body: new

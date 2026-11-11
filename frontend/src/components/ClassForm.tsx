@@ -37,7 +37,9 @@ export default function ClassForm({ defaultSession, onCreated, onDuplicate, edit
     setSaving(true)
     try {
       if (editing) {
-        await editClass(editing.id, name, totalSeats)
+        const blockedInput = data.get('blockedSeats')
+        const blockedSeats = blockedInput === '' ? undefined : Number(blockedInput)
+        await editClass(editing.id, name, totalSeats, blockedSeats)
         setNotice(bn.savedClass)
         onCreated(editing.session)
         return
@@ -68,6 +70,8 @@ export default function ClassForm({ defaultSession, onCreated, onDuplicate, edit
         <label>{bn.name}<input name="name" required maxLength={120} placeholder={bn.example} defaultValue={editing?.name} /></label>
         <label>{bn.session}<input name="session" value={formSession} onChange={event => setFormSession(event.target.value)} readOnly={Boolean(editing)} required maxLength={32} /></label>
         <label>{bn.total}<input name="seats" type="number" required min={1} max={100000} step={1} defaultValue={editing?.totalSeats} /></label>
+        {editing && <label>{bn.blocked}<input name="blockedSeats" type="number" min={0}
+          step={1} placeholder={String(editing.blockedSeats)} /></label>}
         <button disabled={saving}>{saving ? bn.saving : editing ? bn.saveClass : bn.create}</button>
         {editing && <button type="button" disabled={saving} onClick={onCancelEdit}>{bn.newClass}</button>}
         {formError && <p role="alert">{formError}{existing && <> <strong>{existing.name}</strong></>}</p>}
